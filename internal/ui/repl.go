@@ -2076,8 +2076,8 @@ func (r *REPL) showHelp() {
   /writepaste <file_path>      write multiline content to a workspace file
   /compact                     trim conversation history
   /skills [list|read|reload]   list or read project skills
-  /memory [list|files|add|delete]
-                               manage project memory
+  /memory [list [category]|search <q>|add [category] <note>|delete <index>|clear yes]
+                               manage saved project memory
   /mcp                         show MCP servers and tools
   /mission [show|set|phase]    manage task mission state
   /scope [add|list|clear]      manage authorized scope
@@ -2267,7 +2267,11 @@ func (r *REPL) showMemory() {
 
 func (r *REPL) handleMemoryCommand(args []string) {
 	if len(args) == 0 || args[0] == "list" {
-		r.listMemory()
+		category := ""
+		if len(args) > 1 {
+			category = args[1]
+		}
+		r.listMemory(category)
 		return
 	}
 	switch args[0] {
@@ -2280,7 +2284,7 @@ func (r *REPL) handleMemoryCommand(args []string) {
 		}
 		note := strings.TrimSpace(strings.Join(noteArgs, " "))
 		if note == "" {
-			color.Yellow("usage: /memory add [fact|preference|build|debug] <note>")
+			color.Yellow("usage: /memory add [fact|preference|build|debug|pattern|decision|style] <note>")
 			return
 		}
 		path, err := memory.RememberCategory(r.config, category, note)
@@ -2289,6 +2293,12 @@ func (r *REPL) handleMemoryCommand(args []string) {
 			return
 		}
 		color.Green("saved memory to %s", path)
+	case "search", "grep", "find":
+		if len(args) < 2 {
+			color.Yellow("usage: /memory search <query>")
+			return
+		}
+		r.searchMemory(strings.Join(args[1:], " "))
 	case "delete", "del", "rm":
 		if len(args) < 2 {
 			color.Yellow("usage: /memory delete <index>")
@@ -2305,11 +2315,22 @@ func (r *REPL) handleMemoryCommand(args []string) {
 			return
 		}
 		color.Green("deleted memory %d from %s", index, path)
+	case "clear":
+		if len(args) < 2 || (args[1] != "yes" && args[1] != "--force") {
+			color.Yellow("this deletes all saved memories; re-run as: /memory clear yes")
+			return
+		}
+		path, err := memory.Clear(r.config)
+		if err != nil {
+			color.Red("failed to clear memory: %v", err)
+			return
+		}
+		color.Green("cleared all memories in %s", path)
 	case "files":
 		r.showMemoryFilesClean()
 	default:
 		color.Yellow("unknown /memory command: %s", args[0])
-		color.White("usage: /memory [list|files|add [category] <note>|delete <index>]")
+		color.White("usage: /memory [list [category]|search <query>|files|add [category] <note>|delete <index>|clear yes]")
 	}
 }
 
@@ -2337,7 +2358,7 @@ func (r *REPL) showMemoryFilesClean() {
 	fmt.Println()
 }
 
-func (r *REPL) listMemory() {
+func (r *REPL) listMemory(category string) {
 	entries, path, err := memory.List(r.config)
 	if err != nil {
 		color.Red("failed to list memory: %v", err)
@@ -2345,12 +2366,39 @@ func (r *REPL) listMemory() {
 	}
 	fmt.Println(color.CyanString("\nMemory:"))
 	fmt.Printf("  %s\n", path)
+	filter := strings.ToLower(strings.TrimSpace(category))
+	shown := 0
+	for _, entry := range entries {
+		if filter != "" && strings.ToLower(entry.Category) != filter {
+			continue
+		}
+		fmt.Printf("  %d. [%s] %s\n", entry.Index, entry.Category, entry.Note)
+		shown++
+	}
 	if len(entries) == 0 {
 		color.Yellow("  no saved memories")
+	} else if shown == 0 {
+		color.Yellow("  no memories in category %q", category)
+	} else {
+		fmt.Printf("  total: %d\n", len(entries))
+	}
+	fmt.Println()
+}
+
+func (r *REPL) searchMemory(query string) {
+	matches, path, err := memory.Search(r.config, query)
+	if err != nil {
+		color.Red("failed to search memory: %v", err)
+		return
+	}
+	fmt.Println(color.CyanString("\nMemory search:"))
+	fmt.Printf("  %s\n", path)
+	if len(matches) == 0 {
+		color.Yellow("  no memories matched %q", query)
 		fmt.Println()
 		return
 	}
-	for _, entry := range entries {
+	for _, entry := range matches {
 		fmt.Printf("  %d. [%s] %s\n", entry.Index, entry.Category, entry.Note)
 	}
 	fmt.Println()
@@ -2358,7 +2406,8 @@ func (r *REPL) listMemory() {
 
 func isMemoryCategory(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "fact", "preference", "pref", "build", "command", "debug":
+	case "fact", "preference", "pref", "build", "command", "debug",
+		"pattern", "convention", "decision", "style", "gotcha":
 		return true
 	default:
 		return false

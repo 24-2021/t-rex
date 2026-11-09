@@ -26,7 +26,11 @@ func (t *RememberTool) InputSchema() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"note": map[string]interface{}{
 				"type":        "string",
-				"description": "The memory to save. Keep it short, specific, and reusable.",
+				"description": "The memory to save. Keep it short, specific, reusable, and on a single line.",
+			},
+			"category": map[string]interface{}{
+				"type":        "string",
+				"description": "Optional category: fact (default), preference, build, debug, pattern, decision, or style.",
 			},
 		},
 		"required": []string{"note"},
@@ -35,7 +39,8 @@ func (t *RememberTool) InputSchema() map[string]interface{} {
 
 func (t *RememberTool) Execute(_ context.Context, input map[string]interface{}) (*ToolResult, error) {
 	note, _ := input["note"].(string)
-	path, err := memory.Remember(t.config, note)
+	category, _ := input["category"].(string)
+	path, err := memory.RememberCategory(t.config, category, note)
 	if err != nil {
 		return &ToolResult{Content: fmt.Sprintf("memory save failed: %v", err), IsError: true}, nil
 	}

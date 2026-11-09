@@ -7,8 +7,18 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/t-rex-ai/t-rex/internal/config"
+)
+
+const (
+	// MemoryFileName is the file that stores remembered facts and preferences.
+	MemoryFileName = "MEMORY.md"
+	// maxMemoryEntries bounds the store so the system prompt stays small.
+	maxMemoryEntries = 200
+	// maxNoteLength bounds a single note to keep entries readable and cheap.
+	maxNoteLength = 1000
 )
 
 type File struct {
@@ -62,16 +72,16 @@ func Load(cfg *config.Config) (*Context, error) {
 
 	ctx.AutoMemoryOn = cfg.Memory.AutoMemoryEnabled
 	ctx.AutoMemoryDir = AutoMemoryDir(cfg, root)
-	if ctx.AutoMemoryOn {
-		memoryFile := filepath.Join(ctx.AutoMemoryDir, "MEMORY.md")
-		content, err := readLimited(memoryFile, cfg.Memory.MaxBytes, cfg.Memory.MaxLines)
-		if err == nil && strings.TrimSpace(content) != "" {
-			ctx.Files = append(ctx.Files, File{
-				Path:    memoryFile,
-				Label:   "auto-memory",
-				Content: content,
-			})
-		}
+	// Saved memories are always loaded (not only when auto-capture is on) so
+	// notes added with /memory add or the Remember tool are never invisible.
+	memoryFile := filepath.Join(ctx.AutoMemoryDir, MemoryFileName)
+	content, err := readLimited(memoryFile, cfg.Memory.MaxBytes, cfg.Memory.MaxLines)
+	if err == nil && strings.TrimSpace(content) != "" {
+		ctx.Files = append(ctx.Files, File{
+			Path:    memoryFile,
+			Label:   "auto-memory",
+			Content: content,
+		})
 	}
 
 	return ctx, nil
@@ -86,7 +96,7 @@ func RememberCategory(cfg *config.Config, category string, note string) (string,
 		return "", fmt.Errorf("missing config")
 	}
 	category = normalizeCategory(category)
-	note = strings.TrimSpace(note)
+	note = sanitizeNote(note)
 	if note == "" {
 		return "", fmt.Errorf("memory note is empty")
 	}
@@ -100,18 +110,110 @@ func RememberCategory(cfg *config.Config, category string, note string) (string,
 		return "", err
 	}
 
-	path := filepath.Join(dir, "MEMORY.md")
-	if existing, err := os.ReadFile(path); err == nil && containsMemoryNote(string(existing), note) {
+	path := filepath.Join(dir, MemoryFileName)
+	existing, readErr := os.ReadFile(path)
+	if readErr == nil && containsMemoryNote(string(existing), note) {
 		return path, nil
 	}
 	entry := fmt.Sprintf("\n- %s [%s]: %s\n", time.Now().Format(time.RFC3339), category, note)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	if os.IsNotExist(readErr) {
 		entry = "# T-REX Auto Memory\n" + entry
 	}
 	if err := appendFile(path, entry); err != nil {
 		return "", err
 	}
+	if readErr == nil {
+		_ = trimMemoryFile(path, maxMemoryEntries)
+	}
 	return path, nil
+}
+
+// Search returns the entries whose note or category contains the query.
+func Search(cfg *config.Config, query string) ([]Entry, string, error) {
+	entries, path, err := List(cfg)
+	if err != nil {
+		return nil, path, err
+	}
+	needle := canonicalNote(query)
+	if needle == "" {
+		return nil, path, nil
+	}
+	var matches []Entry
+	for _, entry := range entries {
+		if strings.Contains(canonicalNote(entry.Note), needle) ||
+			strings.Contains(strings.ToLower(entry.Category), needle) {
+			matches = append(matches, entry)
+		}
+	}
+	return matches, path, nil
+}
+
+// Clear removes all saved memories, leaving no MEMORY.md behind.
+func Clear(cfg *config.Config) (string, error) {
+	root, err := projectRoot(cfg)
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(AutoMemoryDir(cfg, root), MemoryFileName)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	return path, nil
+}
+
+// Count reports how many memory entries are currently saved.
+func Count(cfg *config.Config) int {
+	entries, _, err := List(cfg)
+	if err != nil {
+		return 0
+	}
+	return len(entries)
+}
+
+// sanitizeNote collapses any whitespace (including newlines) into single spaces
+// so a note is always stored as exactly one line. This keeps entry parsing and
+// index-based deletion reliable.
+func sanitizeNote(note string) string {
+	note = strings.ReplaceAll(note, "\r\n", "\n")
+	note = strings.ReplaceAll(note, "\r", "\n")
+	note = strings.Join(strings.Fields(strings.ReplaceAll(note, "\n", " ")), " ")
+	return truncateRunes(note, maxNoteLength)
+}
+
+func truncateRunes(value string, max int) string {
+	if max <= 0 {
+		return value
+	}
+	runes := []rune(value)
+	if len(runes) <= max {
+		return value
+	}
+	return strings.TrimSpace(string(runes[:max]))
+}
+
+// trimMemoryFile keeps the header plus the most recent max entries.
+func trimMemoryFile(path string, max int) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	var header []string
+	var entries []string
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "- ") {
+			entries = append(entries, line)
+			continue
+		}
+		if len(entries) == 0 {
+			header = append(header, line)
+		}
+	}
+	if max <= 0 || len(entries) <= max {
+		return nil
+	}
+	kept := append(header, entries[len(entries)-max:]...)
+	return os.WriteFile(path, []byte(strings.Join(kept, "\n")+"\n"), 0644)
 }
 
 func List(cfg *config.Config) ([]Entry, string, error) {
@@ -119,7 +221,7 @@ func List(cfg *config.Config) ([]Entry, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	path := filepath.Join(AutoMemoryDir(cfg, root), "MEMORY.md")
+	path := filepath.Join(AutoMemoryDir(cfg, root), MemoryFileName)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -138,7 +240,7 @@ func Delete(cfg *config.Config, index int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(AutoMemoryDir(cfg, root), "MEMORY.md")
+	path := filepath.Join(AutoMemoryDir(cfg, root), MemoryFileName)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
@@ -220,18 +322,45 @@ func parseEntryLine(line string, index int) Entry {
 }
 
 func normalizeCategory(category string) string {
-	switch strings.ToLower(strings.TrimSpace(category)) {
+	raw := strings.ToLower(strings.TrimSpace(category))
+	switch raw {
 	case "preference", "preferences", "pref":
 		return "preference"
 	case "build", "command", "commands":
 		return "build"
-	case "debug", "debugging":
+	case "debug", "debugging", "gotcha", "pitfall":
 		return "debug"
+	case "pattern", "patterns", "convention", "conventions":
+		return "pattern"
+	case "decision", "decisions", "adr":
+		return "decision"
+	case "style", "formatting", "format":
+		return "style"
 	case "fact", "facts", "":
 		return "fact"
-	default:
-		return "fact"
 	}
+	if isSimpleToken(raw) {
+		return raw
+	}
+	return "fact"
+}
+
+// isSimpleToken reports whether value is a short, safe single-word category
+// that can be stored and parsed back without ambiguity.
+func isSimpleToken(value string) bool {
+	if value == "" || utf8.RuneCountInString(value) > 24 {
+		return false
+	}
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func canonicalNote(note string) string {
@@ -302,11 +431,26 @@ func readLimited(path string, maxBytes int64, maxLines int) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	truncated := false
 	if int64(len(data)) > maxBytes {
 		data = data[:maxBytes]
+		truncated = true
 	}
 
-	lines := strings.Split(string(data), "\n")
+	text := string(data)
+	if truncated {
+		// Byte-level truncation can split a multi-byte rune; drop the trailing
+		// partial rune so the excerpt stays valid UTF-8.
+		for len(text) > 0 {
+			r, size := utf8.DecodeLastRuneInString(text)
+			if r != utf8.RuneError || size > 1 {
+				break
+			}
+			text = text[:len(text)-1]
+		}
+	}
+
+	lines := strings.Split(text, "\n")
 	if len(lines) > maxLines {
 		lines = lines[:maxLines]
 	}

@@ -212,18 +212,28 @@ Agent mode: GOAL (objective + acceptance-criteria driven autonomy).
 }
 
 func appendMemory(b *strings.Builder, cfg *config.Config) {
+	if cfg == nil || !cfg.Memory.Enabled {
+		return
+	}
 	ctx, err := memory.Load(cfg)
-	if err != nil || len(ctx.Files) == 0 {
+	if err != nil {
 		return
 	}
 
-	b.WriteString("\n\nLoaded project instructions and memory:")
+	b.WriteString("\n\nProject instructions and memory:")
+	if len(ctx.Files) == 0 {
+		b.WriteString("\n(no instruction files or saved memories loaded yet)")
+	}
 	for _, file := range ctx.Files {
 		fmt.Fprintf(b, "\n\n--- %s (%s) ---\n%s", file.Label, file.Path, file.Content)
 	}
-	if ctx.AutoMemoryOn {
+	if ctx.AutoMemoryDir != "" {
 		fmt.Fprintf(b, "\n\nAuto memory directory: %s", ctx.AutoMemoryDir)
-		b.WriteString("\nUse the Remember tool only for durable project facts or explicit user preferences.")
+	}
+	if ctx.AutoMemoryOn {
+		b.WriteString("\nUse the Remember tool to save durable project facts or explicit user preferences. Keep each note short, single-line, and reusable, and pick a category such as fact, preference, build, debug, pattern, decision, or style.")
+	} else {
+		b.WriteString("\nSaved memories are still loaded above, but automatic memory capture is disabled.")
 	}
 }
 

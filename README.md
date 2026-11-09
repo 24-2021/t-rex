@@ -316,6 +316,28 @@ Content-Type: application/json
 
 Shell 沙箱会拦截常见高风险模式，例如 `cd ..`、工作区外路径重定向、Windows 删除/移动外部路径等。Shell/Write/Edit 默认写安全审计日志到 `.cache/audit.jsonl`。
 
+## 项目记忆
+
+T-REX 会把长期有效的项目事实与用户偏好保存到 `MEMORY.md`，并在每次会话启动时注入系统提示词，形成跨会话记忆。
+
+- 记忆目录由 `memory.autoMemoryDirectory` 决定，未配置时按项目路径散列到配置目录的 `projects/<key>/memory/` 下。
+- 记忆条目统一为单行格式 `- <时间戳> [类别]: <内容>`，写入时自动把多行内容折叠成单行，保证解析与按序号删除准确。
+- 已保存的记忆**始终加载**，与 `autoMemoryEnabled` 无关；`autoMemoryEnabled` 只控制是否允许 agent 通过 `Remember` 工具自动写入。
+- 单条笔记最长 1000 字符，超出自动截断；单文件最多保留最新 200 条，超出自动裁剪。
+- 支持类别：`fact`（默认）、`preference`、`build`、`debug`、`pattern`、`decision`、`style`，其他简短安全的英文单词也会被原样保留。
+
+命令：
+
+```text
+/memory list [category]     # 列出全部或指定类别的记忆（编号用于删除）
+/memory search <keyword>    # 按内容或类别搜索
+/memory add [category] <note>  # 新增一条记忆，默认类别 fact
+/memory delete <index>      # 按编号删除
+/memory clear yes           # 清空全部记忆（需显式确认）
+```
+
+agent 也可通过 `Remember` 工具写入，工具入参 `note` 与可选 `category`。
+
 ## 交互命令
 
 ```text
@@ -325,8 +347,11 @@ Shell 沙箱会拦截常见高风险模式，例如 `cd ..`、工作区外路径
 /paste [instruction]
 /writepaste <file_path>
 /compact
-/memory list
-/memory add preference keep answers concise
+/memory list [category]
+/memory search <keyword>
+/memory add [category] keep answers concise
+/memory delete <index>
+/memory clear yes
 /skills list
 /skills read <id>
 /mcp
