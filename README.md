@@ -7,6 +7,7 @@ T-REX, Terminal Reimagined Experience, 是一个 Go 编写的终端原生 AI 助
 - 单文件原生二进制，无需 Node.js 运行时。
 - 支持 Anthropic Messages API 和 OpenAI 兼容接口。
 - 交互模式和 `prompt` 模式都支持多轮工具调用。
+- 终端回复会渲染 Markdown，支持标题、列表、引用、链接、GFM 表格、任务清单和带语法高亮的代码块。
 - 严格工作区边界：内置文件工具默认只在当前 `project.path` 内读写、编辑和搜索；Shell 默认也固定在工作区内执行。
 - 运行中插话：模型输出期间可以输入新指令，T-REX 会中断当前流并把新指令加入上下文继续执行。
 - 实时上下文状态：输入提示和工具动画会显示 `ctx` 上下文占用。

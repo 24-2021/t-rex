@@ -34,23 +34,23 @@ import (
 
 // REPL 交互式终端界面
 type REPL struct {
-	config       *config.Config
-	apiClient    *api.Client
-	sessionMgr   *session.Manager
-	toolRegistry *tools.Registry
-	mcpManager   *mcp.Manager
-	permChecker  *permission.Checker
-	hookRunner   *hooks.Runner
-	hookContext  []string
-	hooksStarted bool
-	closed       bool
-	interactive  bool
+	config        *config.Config
+	apiClient     *api.Client
+	sessionMgr    *session.Manager
+	toolRegistry  *tools.Registry
+	mcpManager    *mcp.Manager
+	permChecker   *permission.Checker
+	hookRunner    *hooks.Runner
+	hookContext   []string
+	hooksStarted  bool
+	closed        bool
+	interactive   bool
 	pendingPrompt string
-	reader       *bufio.Reader
-	inputCh      chan string
-	inputErrCh   chan error
-	ctx          context.Context
-	cancel       context.CancelFunc
+	reader        *bufio.Reader
+	inputCh       chan string
+	inputErrCh    chan error
+	ctx           context.Context
+	cancel        context.CancelFunc
 }
 
 // NewREPL 创建新的 REPL 实例
@@ -443,8 +443,19 @@ func (r *REPL) processUserMessage(userMsg string) error {
 		}
 
 		var roundText strings.Builder
+		var displayText strings.Builder
 		var assistantToolBlocks []api.ContentBlock
 		var toolResultBlocks []api.ContentBlock
+		flushDisplay := func(stripToolCalls bool) {
+			text := displayText.String()
+			if stripToolCalls && r.shouldParseTextToolCalls(text) {
+				text = stripTextToolCalls(text)
+			}
+			if strings.TrimSpace(text) != "" {
+				fmt.Print(renderMarkdown(text))
+			}
+			displayText.Reset()
+		}
 		var roundUsage *api.Usage
 		interruptEnabled := &atomic.Bool{}
 		interruptEnabled.Store(true)
@@ -466,13 +477,14 @@ func (r *REPL) processUserMessage(userMsg string) error {
 				req,
 				func(text string) {
 					stopThinking()
-					fmt.Print(text)
 					roundText.WriteString(text)
+					displayText.WriteString(text)
 				},
 				func(tool *api.ContentBlock) {
 					stopThinking()
 				},
 				func(content *api.ContentBlock) {
+					flushDisplay(false)
 					interruptEnabled.Store(false)
 					cancelInterrupt()
 					result, toolErr := r.executeTool(apiCtx, content)
@@ -537,6 +549,7 @@ func (r *REPL) processUserMessage(userMsg string) error {
 				attempt = maxAttempts
 			}
 		}
+		flushDisplay(len(toolResultBlocks) == 0 && toolsAvailable)
 		cancelInterrupt()
 		cancelAPI()
 		stopThinking()
