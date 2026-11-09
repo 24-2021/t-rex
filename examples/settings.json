@@ -1,0 +1,126 @@
+{
+  "_comment": "T-REX configuration example",
+  "ai": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-20250514",
+    "maxTokens": 8192,
+    "contextWindow": 200000,
+    "temperature": 1.0,
+    "topP": 1.0,
+    "timeoutSeconds": 300,
+    "maxRetries": 3,
+    "maxToolRounds": 16
+  },
+  "_providers": {
+    "deepseek": {
+      "provider": "deepseek",
+      "baseURL": "https://api.deepseek.com/v1",
+      "model": "deepseek-chat"
+    },
+    "qwen": {
+      "provider": "qwen",
+      "baseURL": "https://dashscope.aliyuncs.com/compatible-mode/v1/",
+      "model": "qwen-plus"
+    },
+    "moonshot": {
+      "provider": "moonshot",
+      "baseURL": "https://api.moonshot.cn/v1/",
+      "model": "moonshot-v1-8k"
+    },
+    "minimax": {
+      "provider": "minimax",
+      "baseURL": "https://api.minimax.chat/v1",
+      "model": "MiniMax-M3"
+    },
+    "custom_openai_compatible": {
+      "provider": "my-provider-name",
+      "baseURL": "https://gateway.example.com/v1",
+      "model": "provider-model-id"
+    }
+  },
+  "project": {
+    "path": "",
+    "allowedPaths": [],
+    "deniedPaths": [],
+    "ignorePatterns": [
+      ".git/",
+      "node_modules/",
+      "__pycache__/",
+      ".DS_Store",
+      "*.exe",
+      "*.dll",
+      "*.so",
+      "*.dylib",
+      "dist/",
+      "build/",
+      ".cache/"
+    ],
+    "maxFileSize": 102400,
+    "toolOutputMaxBytes": 65536
+  },
+  "permissions": {
+    "mode": "default",
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Skills_List",
+      "Skills_Read",
+      "Skills_ReadResource",
+      "Remember",
+      "Todo",
+      "Mission",
+      "Scope",
+      "Finding",
+      "Evidence",
+      "SecurityCatalog",
+      "SecurityTest",
+      "CodeAuditCatalog"
+    ],
+    "ask": ["Shell", "Bash", "Write", "Edit", "mcp__*"],
+    "deny": []
+  },
+  "ui": {
+    "colorScheme": "auto",
+    "outputFormat": "streaming",
+    "showTokenUsage": true,
+    "showTiming": true,
+    "toolOutput": "compact",
+    "zodiacAnimation": true,
+    "startupStyle": "full",
+    "startupArt": "auto",
+    "thinkingAnimation": true
+  },
+  "session": {
+    "storagePath": "",
+    "maxHistorySize": 100,
+    "autoSaveInterval": 30,
+    "compressHistory": true
+  },
+  "mcp": {
+    "servers": [
+      {
+        "name": "example",
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+        "enabled": false
+      }
+    ]
+  },
+  "memory": {
+    "enabled": true,
+    "autoMemoryEnabled": true,
+    "autoMemoryDirectory": "",
+    "additionalFiles": [],
+    "maxBytes": 25600,
+    "maxLines": 200
+  },
+  "skills": {
+    "enabled": true,
+    "paths": []
+  },
+  "hooks": {
+    "hooks": []
+  }
+}

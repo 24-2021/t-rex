@@ -1,0 +1,50 @@
+# Binaries for all platforms
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+t-rex
+t-rex-*
+
+# Test binary
+*.test
+
+# Output directories
+dist/
+build/
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Config (contains API keys)
+config.json
+
+# Session data
+sessions/
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+.cache/
+
+# Coverage
+coverage.out
+coverage.html
